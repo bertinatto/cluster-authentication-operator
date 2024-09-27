@@ -157,6 +157,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	}
 
 	resourceSyncer := resourcesynccontroller.NewResourceSyncController(
+		"Authentication",
 		operatorClient,
 		kubeInformersForNamespaces,
 		v1helpers.CachedSecretGetter(kubeClient.CoreV1(), kubeInformersForNamespaces),
@@ -555,6 +556,7 @@ func prepareOauthAPIServerOperator(ctx context.Context, controllerContext *contr
 	const apiServerConditionsPrefix = "APIServer"
 
 	apiServerControllers, err := apiservercontrollerset.NewAPIServerControllerSet(
+		"APIServer",
 		operatorCtx.operatorClient,
 		eventRecorder,
 	).WithWorkloadController(
