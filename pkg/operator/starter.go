@@ -347,6 +347,7 @@ func prepareOauthOperator(ctx context.Context, controllerContext *controllercmd.
 	)
 
 	payloadConfigController := payload.NewPayloadConfigController(
+		"PayloadConfig",
 		operatorCtx.kubeInformersForNamespaces.InformersFor("openshift-authentication"),
 		operatorCtx.kubeClient.CoreV1(),
 		operatorCtx.kubeClient.CoreV1(),
