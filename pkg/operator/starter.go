@@ -379,6 +379,7 @@ func prepareOauthOperator(ctx context.Context, controllerContext *controllercmd.
 	)
 
 	workersAvailableController := ingressnodesavailable.NewIngressNodesAvailableController(
+		"IngressNodesAvailableController",
 		operatorCtx.operatorClient,
 		operatorCtx.operatorInformer.Operator().V1().IngressControllers(),
 		controllerContext.EventRecorder,
