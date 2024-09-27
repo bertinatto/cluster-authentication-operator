@@ -24,8 +24,10 @@ import (
 	"github.com/openshift/api/annotations"
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
+	applyconfigv1 "github.com/openshift/client-go/config/applyconfigurations/config/v1"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
+	applyoperatorv1 "github.com/openshift/client-go/operator/applyconfigurations/operator/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
@@ -40,8 +42,9 @@ import (
 // endpoint. That is, if the type of authentication in the auth config is set t
 // be the integrated authentication
 type webhookAuthenticatorController struct {
-	authentication  configv1client.AuthenticationInterface
-	serviceAccounts corev1client.ServiceAccountsGetter
+	controllerInstanceName string
+	authentication         configv1client.AuthenticationInterface
+	serviceAccounts        corev1client.ServiceAccountsGetter
 
 	saLister      corev1listers.ServiceAccountLister
 	svcLister     corev1listers.ServiceLister
@@ -55,6 +58,7 @@ type webhookAuthenticatorController struct {
 }
 
 func NewWebhookAuthenticatorController(
+	instanceName string,
 	kubeInformersForTargetNamespace informers.SharedInformerFactory,
 	configInformer configinformers.SharedInformerFactory,
 	secrets corev1client.SecretsGetter,
@@ -65,6 +69,7 @@ func NewWebhookAuthenticatorController(
 	recorder events.Recorder,
 ) factory.Controller {
 	c := &webhookAuthenticatorController{
+		controllerInstanceName:            factory.ControllerInstanceName(instanceName, "WebhookAuthenticator"),
 		secrets:                           secrets,
 		serviceAccounts:                   serviceAccounts,
 		secretsLister:                     kubeInformersForTargetNamespace.Core().V1().Secrets().Lister(),
@@ -83,7 +88,7 @@ func NewWebhookAuthenticatorController(
 	).ResyncEvery(wait.Jitter(time.Minute, 1.0)).
 		WithSync(c.sync).
 		WithSyncDegradedOnError(operatorClient).
-		ToController("WebhookAuthenticatorController", recorder.WithComponentSuffix("webhook-authenticator-controller"))
+		ToController(c.controllerInstanceName, recorder.WithComponentSuffix("webhook-authenticator-controller"))
 }
 
 func (c *webhookAuthenticatorController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
@@ -127,8 +132,13 @@ func (c *webhookAuthenticatorController) sync(ctx context.Context, syncCtx facto
 
 	if authConfig.Spec.WebhookTokenAuthenticator.KubeConfig.Name != kubeConfigSecret.Name {
 		authConfigCopy := authConfig.DeepCopy()
+		authConfigApplyConfiguration, err := applyconfigv1.ExtractAuthentication(authConfigCopy, c.controllerInstanceName)
+		if err != nil {
+			return err
+		}
+
 		authConfigCopy.Spec.WebhookTokenAuthenticator.KubeConfig.Name = kubeConfigSecret.Name
-		_, err := c.authentication.Update(ctx, authConfigCopy, metav1.UpdateOptions{})
+		_, err = c.authentication.Apply(ctx, authConfigApplyConfiguration, metav1.ApplyOptions{})
 		if err != nil {
 			return err
 		}
@@ -194,20 +204,21 @@ func (c *webhookAuthenticatorController) getAuthenticatorCertKeyPair(ctx context
 		if waitingForCertKeyMsg == nil {
 			return
 		}
-		cond := operatorv1.OperatorCondition{
-			Type:    "AuthenticatorCertKeyProgressing",
-			Status:  operatorv1.ConditionFalse,
-			Reason:  "AsExpected",
-			Message: "All is well",
-		}
+		cond := applyoperatorv1.OperatorCondition().
+			WithType("AuthenticatorCertKeyProgressing").
+			WithStatus(operatorv1.ConditionFalse).
+			WithReason("AsExpected").
+			WithMessage("All is well")
 
 		if len(*waitingForCertKeyMsg) > 0 {
-			cond.Status = operatorv1.ConditionTrue
-			cond.Reason = "WaitingForCertKey"
-			cond.Message = *waitingForCertKeyMsg
+			cond = cond.
+				WithStatus(operatorv1.ConditionTrue).
+				WithReason("WaitingForCertKey").
+				WithMessage(*waitingForCertKeyMsg)
 		}
 
-		if _, _, statusErr := v1helpers.UpdateStatus(ctx, c.operatorClient, v1helpers.UpdateConditionFn(cond)); statusErr != nil {
+		status := applyoperatorv1.OperatorStatus().WithConditions(cond)
+		if statusErr := c.operatorClient.ApplyOperatorStatus(ctx, c.controllerInstanceName, status); statusErr != nil {
 			klog.Errorf("failed to update operator status: %v", statusErr)
 			err = statusErr
 		}
