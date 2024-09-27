@@ -296,6 +296,7 @@ func prepareOauthOperator(ctx context.Context, controllerContext *controllercmd.
 	)
 
 	routerCertsController := routercerts.NewRouterCertsDomainValidationController(
+		"RouterCertsDomainValidationController",
 		operatorCtx.operatorClient,
 		operatorCtx.kubeClient.CoreV1(),
 		controllerContext.EventRecorder,
