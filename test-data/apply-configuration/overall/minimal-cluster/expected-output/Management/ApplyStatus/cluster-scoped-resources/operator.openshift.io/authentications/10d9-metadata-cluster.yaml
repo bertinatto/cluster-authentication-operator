@@ -1,8 +1,8 @@
 action: ApplyStatus
-controllerInstanceName: TODO-payloadConfigController
-fieldManager: openshift-authentication-PayloadConfig
+controllerInstanceName: TODO-deploymentController
+fieldManager: OAuthServer-Workload
 generateName: ""
-mame: cluster
+name: cluster
 resourceType:
   Group: operator.openshift.io
   Resource: authentications

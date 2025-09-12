@@ -1,8 +1,0 @@
-action: Create
-controllerInstanceName: TODO-authenticatorCertRequester
-generateName: system:openshift:openshift-authenticator-
-mame: ""
-resourceType:
-  Group: certificates.k8s.io
-  Resource: certificatesigningrequests
-  Version: v1
