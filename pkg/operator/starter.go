@@ -687,6 +687,7 @@ func prepareOauthAPIServerOperator(
 		authOperatorInput.kubeClient.CoreV1(),
 		eventRecorder,
 		"OpenShiftAuthenticatorCertRequester",
+		authOperatorInput.keyGenerator,
 	)
 	if err != nil {
 		return nil, nil, err

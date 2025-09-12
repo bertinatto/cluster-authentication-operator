@@ -32,6 +32,7 @@ import (
 	"github.com/openshift/library-go/pkg/manifestclient"
 	libgoetcd "github.com/openshift/library-go/pkg/operator/configobserver/etcd"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/operator/csr"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/genericoperatorclient"
 	"github.com/openshift/library-go/pkg/operator/loglevel"
@@ -58,6 +59,7 @@ type authenticationOperatorInput struct {
 	apiextensionClient           apiextensionsclient.Interface
 	eventRecorder                events.Recorder
 	clock                        clock.PassiveClock
+	keyGenerator                 csr.KeyGenerator
 	featureGateAccessor          featureGateAccessorFunc
 
 	informerFactories []libraryapplyconfiguration.SimplifiedInformerFactory
@@ -131,6 +133,11 @@ func CreateOperatorInputFromMOM(ctx context.Context, momInput libraryapplyconfig
 			Name:      "authentication-operator",
 		}, momInput.Clock)
 
+	keyGenerator := csr.NewDefaultKeyGenerator()
+	if momInput.DeterministicMode {
+		keyGenerator = csr.NewFakeKeyGenerator()
+	}
+
 	return &authenticationOperatorInput{
 		kubeClient:                   kubeClient,
 		configClient:                 configClient,
@@ -143,6 +150,7 @@ func CreateOperatorInputFromMOM(ctx context.Context, momInput libraryapplyconfig
 		apiextensionClient:           apiextensionClient,
 		eventRecorder:                eventRecorder,
 		clock:                        momInput.Clock,
+		keyGenerator:                 keyGenerator,
 		featureGateAccessor:          staticFeatureGateAccessor([]ocpconfigv1.FeatureGateName{features.FeatureGateExternalOIDC}, []ocpconfigv1.FeatureGateName{}),
 		informerFactories: []libraryapplyconfiguration.SimplifiedInformerFactory{
 			libraryapplyconfiguration.DynamicInformerFactoryAdapter(dynamicInformers), // we don't share the dynamic informers, but we only want to start when requested
@@ -220,6 +228,7 @@ func CreateControllerInputFromControllerContext(ctx context.Context, controllerC
 		apiextensionClient:           apiextensionsClient,
 		eventRecorder:                eventRecorder,
 		clock:                        controllerContext.Clock,
+		keyGenerator:                 csr.NewDefaultKeyGenerator(),
 		featureGateAccessor:          defaultFeatureGateAccessor,
 		informerFactories: []libraryapplyconfiguration.SimplifiedInformerFactory{
 			libraryapplyconfiguration.DynamicInformerFactoryAdapter(dynamicInformers), // we don't share the dynamic informers, but we only want to start when requested
