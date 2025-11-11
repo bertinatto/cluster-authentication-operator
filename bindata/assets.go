@@ -4,7 +4,7 @@ import (
 	"embed"
 )
 
-//go:embed oauth-apiserver/* oauth-openshift/*
+//go:embed oauth-apiserver/* oauth-openshift/* oauth-openshift/hypershift/*
 var f embed.FS
 
 // Asset reads and returns the content of the named file.

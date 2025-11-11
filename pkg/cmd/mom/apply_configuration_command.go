@@ -15,13 +15,22 @@ func NewApplyConfigurationCommand(streams genericiooptions.IOStreams) *cobra.Com
 }
 
 func RunApplyConfiguration(ctx context.Context, input libraryapplyconfiguration.ApplyConfigurationInput) (*libraryapplyconfiguration.ApplyConfigurationRunResult, libraryapplyconfiguration.AllDesiredMutationsGetter, error) {
-	authenticationOperatorInput, err := operator.CreateOperatorInputFromMOM(ctx, input)
+	// Detect if only HyperShift controller is requested to avoid setting up other controllers
+	isHyperShiftOnly := len(input.Controllers) == 1 && input.Controllers[0] == "HyperShiftOAuthServerController"
+
+	authenticationOperatorInput, err := operator.CreateOperatorInputFromMOM(ctx, input, isHyperShiftOnly)
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to configure operator input: %w", err)
+		// Return empty mutations to avoid panic in vendor library
+		return &libraryapplyconfiguration.ApplyConfigurationRunResult{},
+			libraryapplyconfiguration.NewApplyConfigurationFromClient(input.MutationTrackingClient.GetMutations()),
+			fmt.Errorf("unable to configure operator input: %w", err)
 	}
 	operatorStarter, err := operator.CreateOperatorStarter(ctx, authenticationOperatorInput)
 	if err != nil {
-		return nil, nil, fmt.Errorf("unable to configure operators: %w", err)
+		// Return empty mutations to avoid panic in vendor library
+		return &libraryapplyconfiguration.ApplyConfigurationRunResult{},
+			libraryapplyconfiguration.NewApplyConfigurationFromClient(input.MutationTrackingClient.GetMutations()),
+			fmt.Errorf("unable to configure operators: %w", err)
 	}
 	return operatorStarter.RunOnce(ctx, input)
 }

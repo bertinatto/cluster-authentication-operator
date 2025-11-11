@@ -28,6 +28,7 @@ import (
 	operatorinformer "github.com/openshift/client-go/operator/informers/externalversions"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
 	routeinformer "github.com/openshift/client-go/route/informers/externalversions"
+	"github.com/openshift/cluster-authentication-operator/pkg/controllers/deployment"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/manifestclient"
 	libgoetcd "github.com/openshift/library-go/pkg/operator/configobserver/etcd"
@@ -61,11 +62,14 @@ type authenticationOperatorInput struct {
 	featureGateAccessor          featureGateAccessorFunc
 
 	informerFactories []libraryapplyconfiguration.SimplifiedInformerFactory
+
+	// isHyperShiftOnly indicates this operator should only run the HyperShift deployment controller
+	isHyperShiftOnly bool
 }
 
 const componentName = "cluster-authentication-operator"
 
-func CreateOperatorInputFromMOM(ctx context.Context, momInput libraryapplyconfiguration.ApplyConfigurationInput) (*authenticationOperatorInput, error) {
+func CreateOperatorInputFromMOM(ctx context.Context, momInput libraryapplyconfiguration.ApplyConfigurationInput, isHyperShiftOnly bool) (*authenticationOperatorInput, error) {
 	kubeClient, err := kubernetes.NewForConfigAndClient(manifestclient.RecommendedRESTConfig(), momInput.MutationTrackingClient.GetHTTPClient())
 	if err != nil {
 		return nil, err
@@ -147,6 +151,7 @@ func CreateOperatorInputFromMOM(ctx context.Context, momInput libraryapplyconfig
 		informerFactories: []libraryapplyconfiguration.SimplifiedInformerFactory{
 			libraryapplyconfiguration.DynamicInformerFactoryAdapter(dynamicInformers), // we don't share the dynamic informers, but we only want to start when requested
 		},
+		isHyperShiftOnly: isHyperShiftOnly,
 	}, nil
 }
 
@@ -286,6 +291,24 @@ func CreateOperatorStarter(ctx context.Context, authOperatorInput *authenticatio
 
 	informerFactories := newInformerFactories(authOperatorInput)
 	ret.Informers = append(ret.Informers, informerFactories.simplifiedInformerFactories()...)
+
+	// Register HyperShift deployment controller
+	hypershiftDeploymentController := deployment.NewHyperShiftOAuthServerController(
+		authOperatorInput.kubeClient,
+		informerFactories.kubeInformersForNamespaces,
+		authOperatorInput.eventRecorder,
+	)
+	ret.ControllerNamedRunOnceFns = append(ret.ControllerNamedRunOnceFns,
+		libraryapplyconfiguration.AdaptSyncFn(authOperatorInput.eventRecorder, "HyperShiftOAuthServerController", hypershiftDeploymentController.Sync),
+	)
+	ret.ControllerRunFns = append(ret.ControllerRunFns,
+		libraryapplyconfiguration.AdaptRunFn(hypershiftDeploymentController.Run),
+	)
+
+	// If running HyperShift-only mode, skip setting up other controllers
+	if authOperatorInput.isHyperShiftOnly {
+		return ret, nil
+	}
 
 	versionRecorder := status.NewVersionGetter()
 	clusterOperator, err := authOperatorInput.configClient.ConfigV1().ClusterOperators().Get(ctx, "authentication", metav1.GetOptions{})
